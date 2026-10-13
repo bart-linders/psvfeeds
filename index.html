@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PSV Nieuws</title>
+<style>
+  :root {
+    --bg: #fafaf8; --surface: #fff; --text: #17181a; --muted: #6b6f76;
+    --line: #e7e6e1; --accent: #d0021b; --chip: #efeeea; --chip-on: #17181a; --chip-on-text: #fff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #101113; --surface: #17181b; --text: #ececec; --muted: #8f939a;
+      --line: #26282c; --accent: #ff4d5e; --chip: #1f2125; --chip-on: #ececec; --chip-on-text: #101113; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 0 16px 64px; }
+  header { padding: 40px 0 16px; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  h1 { margin: 0; font-size: 28px; letter-spacing: -.02em; }
+  h1 span { color: var(--accent); }
+  #updated { color: var(--muted); font-size: 13px; }
+  .controls { position: sticky; top: 0; background: var(--bg); padding: 8px 0 12px; z-index: 2; border-bottom: 1px solid var(--line); }
+  input[type=search] { width: 100%; padding: 10px 14px; font: inherit; color: var(--text); background: var(--surface);
+    border: 1px solid var(--line); border-radius: 10px; outline: none; }
+  input[type=search]:focus-visible, .chip:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  .chip { border: 0; background: var(--chip); color: var(--text); font: inherit; font-size: 13px;
+    padding: 4px 12px; border-radius: 999px; cursor: pointer; }
+  .chip[aria-pressed=true] { background: var(--chip-on); color: var(--chip-on-text); }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 32px 0 4px; font-weight: 600; }
+  article { border-bottom: 1px solid var(--line); }
+  article a { display: flex; gap: 16px; padding: 16px 0; color: inherit; text-decoration: none; }
+  article a:hover h3 { color: var(--accent); }
+  .body { flex: 1; min-width: 0; }
+  .meta { font-size: 13px; color: var(--muted); }
+  .meta b { color: var(--text); font-weight: 600; }
+  h3 { margin: 2px 0 4px; font-size: 18px; line-height: 1.3; font-weight: 600; }
+  p { margin: 0; color: var(--muted); font-size: 14px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  img { width: 96px; height: 96px; object-fit: cover; border-radius: 8px; background: var(--chip); flex: none; }
+  .state { color: var(--muted); padding: 48px 0; text-align: center; }
+  footer { color: var(--muted); font-size: 12px; margin-top: 32px; }
+  @media (max-width: 480px) { img { width: 72px; height: 72px; } h3 { font-size: 16px; } header { padding-top: 24px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><span>PSV</span> Nieuws</h1>
+    <span id="updated"></span>
+  </header>
+  <div class="controls">
+    <input id="q" type="search" placeholder="Zoek in nieuws…" aria-label="Zoek in nieuws">
+    <div class="chips" id="chips" role="group" aria-label="Filter op bron"></div>
+  </div>
+  <main id="list"><div class="state">Laden…</div></main>
+  <footer id="foot"></footer>
+</div>
+<script>
+const $ = id => document.getElementById(id);
+let items = [], active = null;
+
+const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const dayLabel = d => {
+  const t = new Date(); t.setHours(0, 0, 0, 0);
+  const diff = Math.round((t - new Date(new Date(d).setHours(0, 0, 0, 0))) / 864e5);
+  if (diff <= 0) return 'Vandaag';
+  if (diff === 1) return 'Gisteren';
+  return new Date(d).toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' });
+};
+const ago = d => {
+  const m = Math.max(0, Math.round((Date.now() - new Date(d)) / 6e4));
+  if (m < 60) return `${m || 1} min`;
+  if (m < 1440) return `${Math.round(m / 60)} uur`;
+  return new Date(d).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+};
+
+function render() {
+  const q = $('q').value.trim().toLowerCase();
+  const shown = items.filter(i => (!active || i.source === active) && (!q || `${i.title} ${i.summary}`.toLowerCase().includes(q)));
+  if (!shown.length) { $('list').innerHTML = '<div class="state">Geen berichten gevonden.</div>'; return; }
+  let html = '', day = '';
+  for (const i of shown) {
+    const l = dayLabel(i.date);
+    if (l !== day) { html += `<h2>${l}</h2>`; day = l; }
+    html += `<article><a href="${esc(i.link)}" target="_blank" rel="noopener noreferrer">
+      <div class="body"><div class="meta"><b>${esc(i.source)}</b> · ${ago(i.date)}</div>
+      <h3>${esc(i.title)}</h3>${i.summary ? `<p>${esc(i.summary)}</p>` : ''}</div>
+      ${i.image ? `<img src="${esc(i.image)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}
+    </a></article>`;
+  }
+  $('list').innerHTML = html;
+}
+
+function chips() {
+  const counts = {};
+  items.forEach(i => counts[i.source] = (counts[i.source] || 0) + 1);
+  const top = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 12).map(e => e[0]);
+  $('chips').innerHTML = ['Alle', ...top].map(s =>
+    `<button class="chip" aria-pressed="${(s === 'Alle' ? !active : active === s)}" data-s="${esc(s)}">${esc(s)}</button>`).join('');
+}
+
+$('chips').onclick = e => {
+  const s = e.target.dataset.s; if (!s) return;
+  active = s === 'Alle' ? null : s; chips(); render();
+};
+$('q').oninput = render;
+
+async function load() {
+  try {
+    const d = await (await fetch('/api/news')).json();
+    items = d.items;
+    $('updated').textContent = 'Bijgewerkt ' + new Date(d.updated).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+    const bad = d.feeds.filter(f => !f.ok).map(f => f.name);
+    $('foot').textContent = `Bronnen: ${d.feeds.filter(f => f.ok).map(f => f.name).join(', ')}.` + (bad.length ? ` Niet bereikbaar: ${bad.join(', ')}.` : '');
+    chips(); render();
+  } catch { $('list').innerHTML = '<div class="state">Nieuws kon niet worden geladen.</div>'; }
+}
+load(); setInterval(load, 5 * 60 * 1000);
+</script>
+</body>
+</html>
